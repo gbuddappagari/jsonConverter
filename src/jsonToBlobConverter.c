@@ -1,32 +1,3 @@
-/*
-Convert below sample json data to blob
-
-{
-"portforwarding":[
-{
-"Protocol":"TCP/UDP",
-"Description":"Rule-6",
-"Enable":"true",
-"InternalClient":"192.168.1.6",
-"ExternalPortEndRange":"7006",
-"ExternalPort":"7006"
-},
-{
-"Protocol":"TCP/UDP",
-"Description":"Rule-7",
-"Enable":"true",
-"InternalClient":"192.168.1.7",
-"ExternalPortEndRange":"7007",
-"ExternalPort":"7007"
-}
-],
-"subdoc_name":"portforwarding",
-"version":223344,
-"transaction_id":2234
-}
-
-*/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,46 +5,135 @@ Convert below sample json data to blob
 #include <cJSON.h>
 #include <base64.h>
 
-#define PORTFORWARDING "portforwarding"
-#define	SUBDOC_NAME "subdoc_name"
-#define VERSION "version"
-#define TRANS_ID "transaction_id"
-#define PROTOCOL "Protocol"
-#define EXTERNAL_PORT "ExternalPort"
-#define INTERNAL_CLIENT "InternalClient"
-#define PORT_RANGE "ExternalPortEndRange"
-#define DESCRIPTION "Description"
-#define ENABLE "Enable"
+/*----------------------------------------------------------------------------*/
+/*                             Function Prototypes                            */
+/*----------------------------------------------------------------------------*/
+static void packJsonString( cJSON *item, msgpack_packer *pk );
+static void packJsonNumber( cJSON *item, msgpack_packer *pk );
+static void packJsonArray( cJSON *item, msgpack_packer *pk );
+static void packJsonObject( cJSON *item, msgpack_packer *pk );
+static void __msgpack_pack_string( msgpack_packer *pk, const void *string, size_t n );
+static int convertJsonToMsgPack(char *data, char **encodedData);
+static void decodeMsgpackData(char *encodedData, int encodedDataLen);
+static char *convertMsgpackToBlob(char *data, int size);
 
+/*----------------------------------------------------------------------------*/
+/*                             External Functions                             */
+/*----------------------------------------------------------------------------*/
 
-int readFromFile(const char *filename, char **data, size_t *len)
+void convertJsonToBlob(char *data)
 {
-	FILE *fp;
-	int ch_count = 0;
-	fp = fopen(filename, "r+");
-	if (fp == NULL)
+	char *encodedData = NULL, *blobData = NULL;
+	int encodedDataLen = 0;
+	printf("********* Converting json to msgpack *******\n");
+	encodedDataLen = convertJsonToMsgPack(data, &encodedData);
+	if(encodedDataLen > 0)
 	{
-		return 0;
+		printf("Converting Json data to msgpack is success\n");
+		printf("Converted msgpack data is \n%s\n",encodedData);
+		decodeMsgpackData(encodedData, encodedDataLen);
 	}
-	fseek(fp, 0, SEEK_END);
-	ch_count = ftell(fp);
-	fseek(fp, 0, SEEK_SET);
-	*data = (char *) malloc(sizeof(char) * (ch_count + 1));
-	fread(*data, 1, ch_count,fp);
-	*len = (size_t)ch_count;
-	fclose(fp);
-	return 1;
+	printf("********* Converting msgpack to blob *******\n");
+	blobData = convertMsgpackToBlob(encodedData, encodedDataLen);
+	if(blobData)
+	{
+		printf("Json is converted to blob\n");
+		printf("blob data is \n%s\n",blobData);
+	}
 }
 
+/*----------------------------------------------------------------------------*/
+/*                             Internal Functions                             */
+/*----------------------------------------------------------------------------*/
+
+static int getItemsCount(cJSON *object)
+{
+	int count = 0;
+	while(object != NULL)
+	{
+		object = object->next;
+		count++;
+	}
+	return count;
+}
 static void __msgpack_pack_string( msgpack_packer *pk, const void *string, size_t n )
 {
     msgpack_pack_str( pk, n );
     msgpack_pack_str_body( pk, string, n );
 }
 
+static void packJsonString( cJSON *item, msgpack_packer *pk )
+{
+	__msgpack_pack_string(pk, item->string, strlen(item->string));
+	__msgpack_pack_string(pk, item->valuestring, strlen(item->valuestring));
+}
+
+static void packJsonNumber( cJSON *item, msgpack_packer *pk )
+{
+	__msgpack_pack_string(pk, item->string, strlen(item->string));
+	msgpack_pack_int(pk, item->valueint);
+}
+
+static void packJsonArray(cJSON *item, msgpack_packer *pk)
+{
+	//printf("*** packing json array ****\n");
+	int arraySize = cJSON_GetArraySize(item);
+	__msgpack_pack_string(pk, item->string, strlen(item->string));
+	msgpack_pack_array( pk, arraySize );
+	int i=0;
+	for(i=0; i<arraySize; i++)
+	{
+		cJSON *arrItem = cJSON_GetArrayItem(item, i);
+		switch((arrItem->type) & 0XFF)
+		{
+			case cJSON_String:
+				//printf("%s is %s\n",arrItem->string, arrItem->valuestring);
+				packJsonString(arrItem, pk);
+				break;
+			case cJSON_Number:
+				//printf("%s is %d\n",arrItem->string, arrItem->valueint);
+				packJsonNumber(arrItem, pk);
+				break;
+			case cJSON_Array:
+				packJsonArray(arrItem, pk);
+				break;
+			case cJSON_Object:
+				packJsonObject(arrItem, pk);
+				break;
+		}
+	}
+}
+static void packJsonObject( cJSON *item, msgpack_packer *pk )
+{
+	//printf("*** packing json object ****\n");
+	cJSON *child = item->child;
+	msgpack_pack_map( pk, getItemsCount(child));
+	while(child != NULL)
+	{
+		switch((child->type) & 0XFF)
+		{
+			case cJSON_String:
+				//printf("%s is %s\n",child->string, child->valuestring);
+				packJsonString(child, pk);
+				break;
+			case cJSON_Number:
+				//printf("%s is %d\n",child->string, child->valueint);
+				packJsonNumber(child, pk);
+				break;
+			case cJSON_Array:
+				packJsonArray(child, pk);
+				break;
+			case cJSON_Object:
+				packJsonObject(child, pk);
+				break;
+		}		
+		child = child->next;
+	}
+}
+
 static int convertJsonToMsgPack(char *data, char **encodedData)
 {
-	cJSON *jsonData=NULL, *portFwdArray = NULL;
+	cJSON *jsonData=NULL;
 	int encodedDataLen = 0;
 	jsonData=cJSON_Parse(data);
 	if(jsonData != NULL)
@@ -82,94 +142,13 @@ static int convertJsonToMsgPack(char *data, char **encodedData)
 		msgpack_packer pk;
 		msgpack_sbuffer_init( &sbuf );
 		msgpack_packer_init( &pk, &sbuf, msgpack_sbuffer_write );
-		msgpack_pack_map( &pk, 4);
-	
-		char *subdoc_name = strdup(cJSON_GetObjectItem(jsonData, SUBDOC_NAME)->valuestring);
-		if(subdoc_name != NULL)
-		{
-			//printf("subdoc_name: %s\n",subdoc_name);
-			__msgpack_pack_string(&pk, SUBDOC_NAME, strlen(SUBDOC_NAME));
-			__msgpack_pack_string(&pk, subdoc_name, strlen(subdoc_name));
-		}
-		int version = cJSON_GetObjectItem(jsonData, VERSION)->valueint;
-		//printf("version: %d\n",version);
-		__msgpack_pack_string(&pk, VERSION, strlen(VERSION));
-		msgpack_pack_int(&pk, version);
-
-		int transId = cJSON_GetObjectItem(jsonData, TRANS_ID)->valueint;
-		//printf("transId: %d\n",transId);
-		__msgpack_pack_string(&pk, TRANS_ID, strlen(TRANS_ID));
-		msgpack_pack_int(&pk, transId);
-	
-		portFwdArray = cJSON_GetObjectItem(jsonData, PORTFORWARDING);
-		if(portFwdArray != NULL)
-		{
-			__msgpack_pack_string(&pk, PORTFORWARDING, strlen(PORTFORWARDING));
-			int paramCount = cJSON_GetArraySize(portFwdArray);
-			//printf("paramCount : %d\n",paramCount);
-			msgpack_pack_array( &pk, paramCount );
-			int i = 0;
-			cJSON *portFwdObj = NULL;
-			for(i=0; i<paramCount; i++)
-			{
-				msgpack_pack_map( &pk, 6);
-				portFwdObj = cJSON_GetArrayItem(portFwdArray, i);
-				char *protocol = strdup(cJSON_GetObjectItem(portFwdObj, PROTOCOL)->valuestring);
-				if(protocol != NULL)
-				{
-					//printf("protocol: %s\n", protocol);
-					__msgpack_pack_string(&pk, PROTOCOL, strlen(PROTOCOL));
-					__msgpack_pack_string(&pk, protocol, strlen(protocol));
-				}
-			
-				char *description = strdup(cJSON_GetObjectItem(portFwdObj, DESCRIPTION)->valuestring);
-				if(description != NULL)
-				{
-					//printf("description: %s\n", description);
-					__msgpack_pack_string(&pk, DESCRIPTION, strlen(DESCRIPTION));
-					__msgpack_pack_string(&pk, description, strlen(description));
-				}
-			
-				char *enable = strdup(cJSON_GetObjectItem(portFwdObj, ENABLE)->valuestring);
-				if(enable != NULL)
-				{
-					//printf("enable: %s\n", enable);
-					__msgpack_pack_string(&pk, ENABLE, strlen(ENABLE));
-					__msgpack_pack_string(&pk, enable, strlen(enable));
-				}
-
-				char *internalClient = strdup(cJSON_GetObjectItem(portFwdObj, INTERNAL_CLIENT)->valuestring);
-				if(internalClient != NULL)
-				{
-					//printf("internalClient: %s\n", internalClient);
-					__msgpack_pack_string(&pk, INTERNAL_CLIENT, strlen(INTERNAL_CLIENT));
-					__msgpack_pack_string(&pk, internalClient, strlen(internalClient));
-				}
-
-				char *portRange = strdup(cJSON_GetObjectItem(portFwdObj, PORT_RANGE)->valuestring);
-				if(portRange != NULL)
-				{
-					//printf("portRange: %s\n", portRange);
-					__msgpack_pack_string(&pk, PORT_RANGE, strlen(PORT_RANGE));
-					__msgpack_pack_string(&pk, portRange, strlen(portRange));
-				}
-
-				char *externalPort = strdup(cJSON_GetObjectItem(portFwdObj, EXTERNAL_PORT)->valuestring);
-				if(externalPort != NULL)
-				{
-					//printf("externalPort: %s\n", externalPort);
-					__msgpack_pack_string(&pk, EXTERNAL_PORT, strlen(EXTERNAL_PORT));
-					__msgpack_pack_string(&pk, externalPort, strlen(externalPort));
-				}
-			}
-		}
+		packJsonObject(jsonData, &pk);
 		if( sbuf.data )
 		{
 		    *encodedData = ( char * ) malloc( sizeof( char ) * sbuf.size );
 		    if( NULL != *encodedData )
 			{
 		        memcpy( *encodedData, sbuf.data, sbuf.size );
-				//printf("sbuf.data is %s sbuf.size %ld\n", sbuf.data, sbuf.size);
 			}
 			encodedDataLen = sbuf.size;
 		}
@@ -198,7 +177,7 @@ static void decodeMsgpackData(char *encodedData, int encodedDataLen)
 	msgpack_zone_destroy(&mempool);	
 }
 
-char *convertMsgpackToBlob(char *data, int size)
+static char *convertMsgpackToBlob(char *data, int size)
 {
 	char* b64buffer =  NULL;
 	int b64bufferSize = b64_get_encoded_buffer_size( size );
@@ -212,49 +191,4 @@ char *convertMsgpackToBlob(char *data, int size)
 		//printf("blob data is \n%s\n",b64buffer);
 	}
 	return b64buffer;
-}
-int main(int argc, char *argv[])
-{
-	char *filename = NULL;
-	char *fileData = NULL;
-    size_t len = 0;
-	char *encodedData = NULL, *blobData = NULL;
-	int encodedDataLen = 0;
-
-	if(argc >= 2 && argv[1] != NULL)
-	{
-		printf("Json file is %s\n",argv[1]);
-		filename = strdup(argv[1]);
-	}
-	else
-	{
-		printf("Json file path is required\n");
-		printf("\nUsage: ./jsonToBlobConverter jsonFilePath\n");
-	}
-
-	printf("****** Reading data from file *******\n");
-	if(readFromFile(filename, &fileData, &len))
-	{
-		printf("Json file data is \n%s\n",fileData);
-	}
-	else
-	{
-		fprintf(stderr,"File not Found\n");
-	}
-	printf("********* Converting json to msgpack *******\n");
-	encodedDataLen = convertJsonToMsgPack(fileData, &encodedData);
-	if(encodedDataLen > 0)
-	{
-		printf("Converting Json data to msgpack is success\n");
-		printf("Converted msgpack data is \n%s\n",encodedData);
-		decodeMsgpackData(encodedData, encodedDataLen);
-	}
-	printf("********* Converting msgpack to blob *******\n");
-	blobData = convertMsgpackToBlob(encodedData, encodedDataLen);
-	if(blobData)
-	{
-		printf("Json is converted to blob\n");
-		printf("blob data is \n%s\n",blobData);
-	}
-	return 0;
 }

@@ -14,9 +14,10 @@
 
 project(jsonToBlobConverter)
 
-set(SOURCES jsonToBlobConverter.c)
+set(HEADERS jsonToBlobConverter.h)
+set(SOURCES jsonToBlobConverter.c main.c)
 
-add_executable(jsonToBlobConverter ${SOURCES})
+add_executable(jsonToBlobConverter ${SOURCES} ${HEADERS} )
 
 target_link_libraries (jsonToBlobConverter
     ${CMAKE_THREAD_LIBS_INIT}
