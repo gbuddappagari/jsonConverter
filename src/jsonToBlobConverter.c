@@ -18,14 +18,14 @@ static void __msgpack_pack_string( msgpack_packer *pk, const void *string, size_
 static int convertJsonToMsgPack(char *data, char **encodedData);
 static void decodeMsgpackData(char *encodedData, int encodedDataLen);
 static char *convertMsgpackToBlob(char *data, int size);
-
+static char *decodeBlobData(char *data);
 /*----------------------------------------------------------------------------*/
 /*                             External Functions                             */
 /*----------------------------------------------------------------------------*/
 
 void convertJsonToBlob(char *data)
 {
-	char *encodedData = NULL, *blobData = NULL;
+	char *encodedData = NULL, *blobData = NULL, *decodedBlob = NULL;
 	int encodedDataLen = 0;
 	printf("********* Converting json to msgpack *******\n");
 	encodedDataLen = convertJsonToMsgPack(data, &encodedData);
@@ -41,6 +41,12 @@ void convertJsonToBlob(char *data)
 	{
 		printf("Json is converted to blob\n");
 		printf("blob data is \n%s\n",blobData);
+		decodedBlob = decodeBlobData(blobData);
+		printf("Decoded blob data is \n%s\n",decodedBlob);
+	}
+	if(strcmp(encodedData, decodedBlob) == 0)
+	{
+		printf("Encoded msgpack data and decoded blob data are equal\n");
 	}
 }
 
@@ -126,10 +132,18 @@ static void packJsonArray(cJSON *item, msgpack_packer *pk)
 static void packJsonObject( cJSON *item, msgpack_packer *pk )
 {
 	//printf("*** packing json object ****\n");
+	if(item->string != NULL)
+	{
+		//printf("item->string : %s\n",item->string);
+		__msgpack_pack_string(pk, item->string, strlen(item->string));
+	}
 	cJSON *child = item->child;
 	msgpack_pack_map( pk, getItemsCount(child));
+	//int i = 0;
 	while(child != NULL)
 	{
+		//printf("**** %s item %d ******\n",item->string,++i);
+		//printf("%s type is %d \n",child->string, child->type);
 		switch((child->type) & 0XFF)
 		{
 			case cJSON_True:
@@ -217,4 +231,20 @@ static char *convertMsgpackToBlob(char *data, int size)
 		//printf("blob data is \n%s\n",b64buffer);
 	}
 	return b64buffer;
+}
+
+static char *decodeBlobData(char *data)
+{
+	int size = 0;
+	char *decodedData = NULL;
+    size = b64_get_decoded_buffer_size(strlen(data));
+    decodedData = (char *) malloc(sizeof(char) * size);
+    if(decodedData)
+    {
+		memset( decodedData, 0, sizeof(char) *  size );
+		size = b64_decode( (const uint8_t *)data, strlen(data), (uint8_t *)decodedData );
+		//printf("Decoded blob data is \n%s\n",decodedData);
+		decodeMsgpackData(decodedData, size);
+	}
+	return decodedData;
 }
