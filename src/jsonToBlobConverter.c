@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <msgpack.h>
 #include <cJSON.h>
 #include <base64.h>
@@ -12,6 +13,7 @@ static void packJsonString( cJSON *item, msgpack_packer *pk );
 static void packJsonNumber( cJSON *item, msgpack_packer *pk );
 static void packJsonArray( cJSON *item, msgpack_packer *pk );
 static void packJsonObject( cJSON *item, msgpack_packer *pk );
+static void packJsonBool(cJSON *item, msgpack_packer *pk, bool value);
 static void __msgpack_pack_string( msgpack_packer *pk, const void *string, size_t n );
 static int convertJsonToMsgPack(char *data, char **encodedData);
 static void decodeMsgpackData(char *encodedData, int encodedDataLen);
@@ -74,6 +76,18 @@ static void packJsonNumber( cJSON *item, msgpack_packer *pk )
 	msgpack_pack_int(pk, item->valueint);
 }
 
+static void packJsonBool(cJSON *item, msgpack_packer *pk, bool value)
+{
+	__msgpack_pack_string(pk, item->string, strlen(item->string));
+	if(value)
+	{
+		msgpack_pack_true(pk);
+	}
+	else
+	{
+		msgpack_pack_false(pk);
+	}
+}
 static void packJsonArray(cJSON *item, msgpack_packer *pk)
 {
 	//printf("*** packing json array ****\n");
@@ -86,6 +100,12 @@ static void packJsonArray(cJSON *item, msgpack_packer *pk)
 		cJSON *arrItem = cJSON_GetArrayItem(item, i);
 		switch((arrItem->type) & 0XFF)
 		{
+			case cJSON_True:
+				packJsonBool(arrItem, pk, true);
+				break;
+			case cJSON_False:
+				packJsonBool(arrItem, pk, false);
+				break;
 			case cJSON_String:
 				//printf("%s is %s\n",arrItem->string, arrItem->valuestring);
 				packJsonString(arrItem, pk);
@@ -112,6 +132,12 @@ static void packJsonObject( cJSON *item, msgpack_packer *pk )
 	{
 		switch((child->type) & 0XFF)
 		{
+			case cJSON_True:
+				packJsonBool(child, pk, true);
+				break;
+			case cJSON_False:
+				packJsonBool(child, pk, false);
+				break;
 			case cJSON_String:
 				//printf("%s is %s\n",child->string, child->valuestring);
 				packJsonString(child, pk);
@@ -126,7 +152,7 @@ static void packJsonObject( cJSON *item, msgpack_packer *pk )
 			case cJSON_Object:
 				packJsonObject(child, pk);
 				break;
-		}		
+		}
 		child = child->next;
 	}
 }
