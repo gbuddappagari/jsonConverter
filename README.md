@@ -15,4 +15,7 @@ cd src
 ./jsonConverterCli -f <file-name> --[encoding]
 Encoding --B for blob
          --M for msgpack
+
+cd multipart
+./multipartDoc <root-version> <subdoc-version,subdoc-name,data> .... <subdoc-version,subdoc-name,data>
 ```

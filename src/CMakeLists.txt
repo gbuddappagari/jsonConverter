@@ -41,3 +41,5 @@ target_link_libraries (jsonConverterCli
     -lrt
     )
 install (TARGETS jsonConverterCli DESTINATION bin)
+
+add_subdirectory(multipart)
