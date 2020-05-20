@@ -15,9 +15,21 @@
 project(jsonConverter)
 
 set(HEADERS jsonConverter.h)
-set(SOURCES jsonConverter.c main.c)
+set(SOURCES jsonConverter.c)
+add_library(jsonConverter STATIC ${HEADERS} ${SOURCES})
+add_library(jsonConverter.shared SHARED ${HEADERS} ${SOURCES})
+set_target_properties(jsonConverter.shared PROPERTIES OUTPUT_NAME jsonConverter)
+set_property(TARGET jsonConverter PROPERTY C_STANDARD 99)
+set_property(TARGET jsonConverter.shared PROPERTY C_STANDARD 99)
+install (TARGETS jsonConverter DESTINATION ${LIBRARY_DIR})
+install (TARGETS jsonConverter.shared DESTINATION ${LIBRARY_DIR})
+install (FILES ${HEADERS} DESTINATION include/jsonConverter)
 
-add_executable(jsonConverterCli ${SOURCES} ${HEADERS} )
+#------------------------------------------#
+#------- jsonConverter cli ----------------#
+#------------------------------------------#
+set(BIN_SOURCES ${SOURCES} main.c)
+add_executable(jsonConverterCli ${BIN_SOURCES} ${HEADERS} )
 
 target_link_libraries (jsonConverterCli
     ${CMAKE_THREAD_LIBS_INIT}

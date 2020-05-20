@@ -9,50 +9,109 @@
 /*----------------------------------------------------------------------------*/
 /*                             Function Prototypes                            */
 /*----------------------------------------------------------------------------*/
+static int readFromFile(const char *filename, char **data, size_t *len);
+static int writeToFile(char *file_path, char *data, size_t size);
 static void packJsonString( cJSON *item, msgpack_packer *pk );
 static void packJsonNumber( cJSON *item, msgpack_packer *pk );
 static void packJsonArray( cJSON *item, msgpack_packer *pk );
 static void packJsonObject( cJSON *item, msgpack_packer *pk );
 static void packJsonBool(cJSON *item, msgpack_packer *pk, bool value);
 static void __msgpack_pack_string( msgpack_packer *pk, const void *string, size_t n );
+static int convertJsonToBlob(char *data, char **encodedData);
 static int convertJsonToMsgPack(char *data, char **encodedData);
 static void decodeMsgpackData(char *encodedData, int encodedDataLen);
-static char *convertMsgpackToBlob(char *data, int size);
+static int convertMsgpackToBlob(char *data, int size, char **encodedData);
 static char *decodeBlobData(char *data);
 /*----------------------------------------------------------------------------*/
 /*                             External Functions                             */
 /*----------------------------------------------------------------------------*/
 
-void convertJsonToBlob(char *data)
+int processEncoding(char *filename, char *encoding)
 {
-	char *encodedData = NULL, *blobData = NULL, *decodedBlob = NULL;
-	int encodedDataLen = 0;
-	printf("********* Converting json to msgpack *******\n");
-	encodedDataLen = convertJsonToMsgPack(data, &encodedData);
-	if(encodedDataLen > 0)
+	char outFile[128] = {'\0'};
+	char *fileData = NULL;
+    size_t len = 0;
+	char *encodedData = NULL, *temp = NULL;
+	int encodedLen = 0;
+	
+	if(readFromFile(filename, &fileData, &len))
 	{
-		printf("Converting Json data to msgpack is success\n");
-		printf("Converted msgpack data is \n%s\n",encodedData);
-		decodeMsgpackData(encodedData, encodedDataLen);
+		if(strcmp(encoding,"B") == 0)
+		{
+			encodedLen = convertJsonToBlob(fileData, &encodedData);
+		}
+		else if(strcmp(encoding, "M") == 0)
+		{
+			encodedLen = convertJsonToMsgPack(fileData, &encodedData);
+		}
+		if(encodedLen > 0 && encodedData != NULL)
+		{
+			temp = strdup(filename);
+			sprintf(outFile,"%s.bin",strtok(temp, "."));
+			printf("Encoding is success. Hence writing encoded data to %s\n",outFile);
+			if(writeToFile(outFile, encodedData, encodedLen) == 0)
+			{
+				fprintf(stderr,"%s File not Found\n", outFile);
+				FREE(encodedData);
+				FREE(temp);
+				return 0;
+			}
+			FREE(encodedData);
+			FREE(temp);
+		}
 	}
-	printf("********* Converting msgpack to blob *******\n");
-	blobData = convertMsgpackToBlob(encodedData, encodedDataLen);
-	if(blobData)
+	else
 	{
-		printf("Json is converted to blob\n");
-		printf("blob data is \n%s\n",blobData);
-		decodedBlob = decodeBlobData(blobData);
-		printf("Decoded blob data is \n%s\n",decodedBlob);
+		fprintf(stderr,"%s File not Found\n",filename);
+		return 0;
 	}
-	if(strcmp(encodedData, decodedBlob) == 0)
-	{
-		printf("Encoded msgpack data and decoded blob data are equal\n");
-	}
+	return 1;
 }
-
 /*----------------------------------------------------------------------------*/
 /*                             Internal Functions                             */
 /*----------------------------------------------------------------------------*/
+
+static int readFromFile(const char *filename, char **data, size_t *len)
+{
+	FILE *fp;
+	int ch_count = 0;
+	fp = fopen(filename, "r+");
+	if (fp == NULL)
+	{
+		return 0;
+	}
+	fseek(fp, 0, SEEK_END);
+	ch_count = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+	*data = (char *) malloc(sizeof(char) * (ch_count + 1));
+	fread(*data, 1, ch_count,fp);
+	*len = (size_t)ch_count;
+	fclose(fp);
+	return 1;
+}
+
+static int writeToFile(char *file_path, char *data, size_t size)
+{
+	FILE *fp;
+	fp = fopen(file_path , "w+");
+	if (fp == NULL)
+	{
+		printf("Failed to open file %s\n", file_path );
+		return 0;
+	}
+	if(data !=NULL)
+	{
+		fwrite(data, size, 1, fp);
+		fclose(fp);
+		return 1;
+	}
+	else
+	{
+		printf("writeToFile failed, Data is NULL\n");
+		fclose(fp);
+		return 0;
+	}
+}
 
 static int getItemsCount(cJSON *object)
 {
@@ -96,7 +155,6 @@ static void packJsonBool(cJSON *item, msgpack_packer *pk, bool value)
 }
 static void packJsonArray(cJSON *item, msgpack_packer *pk)
 {
-	//printf("*** packing json array ****\n");
 	int arraySize = cJSON_GetArraySize(item);
 	__msgpack_pack_string(pk, item->string, strlen(item->string));
 	msgpack_pack_array( pk, arraySize );
@@ -113,11 +171,9 @@ static void packJsonArray(cJSON *item, msgpack_packer *pk)
 				packJsonBool(arrItem, pk, false);
 				break;
 			case cJSON_String:
-				//printf("%s is %s\n",arrItem->string, arrItem->valuestring);
 				packJsonString(arrItem, pk);
 				break;
 			case cJSON_Number:
-				//printf("%s is %d\n",arrItem->string, arrItem->valueint);
 				packJsonNumber(arrItem, pk);
 				break;
 			case cJSON_Array:
@@ -131,19 +187,14 @@ static void packJsonArray(cJSON *item, msgpack_packer *pk)
 }
 static void packJsonObject( cJSON *item, msgpack_packer *pk )
 {
-	//printf("*** packing json object ****\n");
 	if(item->string != NULL)
 	{
-		//printf("item->string : %s\n",item->string);
 		__msgpack_pack_string(pk, item->string, strlen(item->string));
 	}
 	cJSON *child = item->child;
 	msgpack_pack_map( pk, getItemsCount(child));
-	//int i = 0;
 	while(child != NULL)
 	{
-		//printf("**** %s item %d ******\n",item->string,++i);
-		//printf("%s type is %d \n",child->string, child->type);
 		switch((child->type) & 0XFF)
 		{
 			case cJSON_True:
@@ -153,11 +204,9 @@ static void packJsonObject( cJSON *item, msgpack_packer *pk )
 				packJsonBool(child, pk, false);
 				break;
 			case cJSON_String:
-				//printf("%s is %s\n",child->string, child->valuestring);
 				packJsonString(child, pk);
 				break;
 			case cJSON_Number:
-				//printf("%s is %d\n",child->string, child->valueint);
 				packJsonNumber(child, pk);
 				break;
 			case cJSON_Array:
@@ -193,12 +242,54 @@ static int convertJsonToMsgPack(char *data, char **encodedData)
 			encodedDataLen = sbuf.size;
 		}
 		msgpack_sbuffer_destroy(&sbuf);
+		cJSON_Delete(jsonData);
 	}
 	else
 	{
 		printf("Failed to parse JSON\n");
 	}
 	return encodedDataLen;
+}
+
+static int convertJsonToBlob(char *data, char **encodedData)
+{
+	char *msgpackData = NULL, *blobData = NULL, *decodedBlob = NULL;
+	int msgpackDataLen = 0, blobDataLen = 0;
+	printf("********* Converting json to msgpack *******\n");
+	msgpackDataLen = convertJsonToMsgPack(data, &msgpackData);
+	if(msgpackDataLen > 0)
+	{
+		printf("Converting Json data to msgpack is success\n");
+		printf("Converted msgpack data is \n%s\n",msgpackData);
+		decodeMsgpackData(msgpackData, msgpackDataLen);
+	}
+	else
+	{
+		printf("Failed to encode json data to msgpack\n");
+		return 0;
+	}
+	printf("********* Converting msgpack to blob *******\n");
+	blobDataLen = convertMsgpackToBlob(msgpackData, msgpackDataLen, &blobData);
+	if(blobDataLen>0)
+	{
+		printf("Json is converted to blob\n");
+		printf("blob data is \n%s\n",blobData);
+		*encodedData = blobData;
+		decodedBlob = decodeBlobData(blobData);
+		printf("Decoded blob data is \n%s\n",decodedBlob);
+	}
+	else
+	{
+		printf("Failed to encode msgpack data to blob\n");
+		FREE(msgpackData);
+		return 0;
+	}
+	if(strcmp(msgpackData, decodedBlob) == 0)
+	{
+		printf("Encoded msgpack data and decoded blob data are equal\n");
+	}
+	FREE(msgpackData);
+	return blobDataLen;
 }
 
 static void decodeMsgpackData(char *encodedData, int encodedDataLen)
@@ -217,7 +308,7 @@ static void decodeMsgpackData(char *encodedData, int encodedDataLen)
 	msgpack_zone_destroy(&mempool);	
 }
 
-static char *convertMsgpackToBlob(char *data, int size)
+static int convertMsgpackToBlob(char *data, int size, char **encodedData)
 {
 	char* b64buffer =  NULL;
 	int b64bufferSize = b64_get_encoded_buffer_size( size );
@@ -228,9 +319,9 @@ static char *convertMsgpackToBlob(char *data, int size)
 
         b64_encode((uint8_t *)data, size, (uint8_t *)b64buffer);
         b64buffer[b64bufferSize] = '\0' ;
-		//printf("blob data is \n%s\n",b64buffer);
+		*encodedData = b64buffer;
 	}
-	return b64buffer;
+	return b64bufferSize;
 }
 
 static char *decodeBlobData(char *data)
@@ -243,8 +334,8 @@ static char *decodeBlobData(char *data)
     {
 		memset( decodedData, 0, sizeof(char) *  size );
 		size = b64_decode( (const uint8_t *)data, strlen(data), (uint8_t *)decodedData );
-		//printf("Decoded blob data is \n%s\n",decodedData);
 		decodeMsgpackData(decodedData, size);
 	}
 	return decodedData;
 }
+

@@ -11,4 +11,8 @@ cd build
 cmake ..
 make
 
+cd src
+./jsonConverterCli -f <file-name> --[encoding]
+Encoding --B for blob
+         --M for msgpack
 ```

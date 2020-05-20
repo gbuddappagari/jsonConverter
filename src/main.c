@@ -1,55 +1,69 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <getopt.h>
 #include "jsonConverter.h"
-
-int readFromFile(const char *filename, char **data, size_t *len)
-{
-	FILE *fp;
-	int ch_count = 0;
-	fp = fopen(filename, "r+");
-	if (fp == NULL)
-	{
-		return 0;
-	}
-	fseek(fp, 0, SEEK_END);
-	ch_count = ftell(fp);
-	fseek(fp, 0, SEEK_SET);
-	*data = (char *) malloc(sizeof(char) * (ch_count + 1));
-	fread(*data, 1, ch_count,fp);
-	*len = (size_t)ch_count;
-	fclose(fp);
-	return 1;
-}
-
 
 int main(int argc, char *argv[])
 {
-	char *filename = NULL;
-	char *fileData = NULL;
-    size_t len = 0;
+	char *filename = NULL, *enc = NULL;
+	int ret = 0;
+	if(argc < 2)
+	{
+		fprintf(stderr,"Usage: %s -f <filename> --[encoding]\n", argv[0]);
+		return 0;
+	}
+	
+	static const struct option long_options[] = {
+        {"json-file",      required_argument, 0, 'f'},
+        {"B",              no_argument,       0, 'B'},
+        {"M",              no_argument,       0, 'M'},
+        {0, 0, 0, 0}
+    };
+	int c;
+	optind = 1;
+	while (1)
+	{
+		/* getopt_long stores the option index here. */
+		int option_index = 0;
+		c = getopt_long (argc, argv, "f:B:M",
+		long_options, &option_index);
 
-	if(argc >= 2 && argv[1] != NULL)
-	{
-		printf("Json file is %s\n",argv[1]);
-		filename = strdup(argv[1]);
-	}
-	else
-	{
-		printf("Json file path is required\n");
-		printf("\nUsage: ./jsonToBlobConverter jsonFilePath\n");
+		/* Detect the end of the options. */
+		if (c == -1)
+			break;
+
+		switch (c)
+		{
+			case 'f':
+				filename = strdup(optarg);
+				printf("json-file is %s\n",filename);
+			break;
+			case 'B':
+				printf("BLOB encoding\n");
+				enc = strdup("B");
+			break;
+			case 'M':
+				printf("Msgpack encoding\n");
+				enc = strdup("M");
+			break;
+			case '?':
+			/* getopt_long already printed an error message. */
+			break;
+
+			default:
+				printf("Enter Valid arguments..\n");
+			return -1;
+		}
 	}
 
-	printf("****** Reading data from file *******\n");
-	if(readFromFile(filename, &fileData, &len))
+	ret = processEncoding(filename, enc);
+	if(!ret)
 	{
-		printf("Json file data is %ld bytes\n",len);
+		printf("Encoding failed\n");
 	}
-	else
-	{
-		fprintf(stderr,"File not Found\n");
-	}
-	convertJsonToBlob(fileData);
-	free(filename);
+	FREE(filename);
+	FREE(enc);
+	return 0;
 }
 
