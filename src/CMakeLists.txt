@@ -12,14 +12,14 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
-project(jsonToBlobConverter)
+project(jsonConverter)
 
-set(HEADERS jsonToBlobConverter.h)
-set(SOURCES jsonToBlobConverter.c main.c)
+set(HEADERS jsonConverter.h)
+set(SOURCES jsonConverter.c main.c)
 
-add_executable(jsonToBlobConverter ${SOURCES} ${HEADERS} )
+add_executable(jsonConverterCli ${SOURCES} ${HEADERS} )
 
-target_link_libraries (jsonToBlobConverter
+target_link_libraries (jsonConverterCli
     ${CMAKE_THREAD_LIBS_INIT}
     -lmsgpackc
     -ltrower-base64
@@ -28,4 +28,4 @@ target_link_libraries (jsonToBlobConverter
     -lpthread
     -lrt
     )
-install (TARGETS jsonToBlobConverter DESTINATION bin)
+install (TARGETS jsonConverterCli DESTINATION bin)

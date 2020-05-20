@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "jsonToBlobConverter.h"
+#include "jsonConverter.h"
 
 int readFromFile(const char *filename, char **data, size_t *len)
 {
