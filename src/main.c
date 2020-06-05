@@ -8,6 +8,7 @@ int main(int argc, char *argv[])
 {
 	char *filename = NULL, *enc = NULL;
 	int ret = 0;
+	int isBlob = 0;
 	if(argc < 2)
 	{
 		fprintf(stderr,"Usage: %s -f <filename> --[encoding]\n", argv[0]);
@@ -18,6 +19,7 @@ int main(int argc, char *argv[])
         {"json-file",      required_argument, 0, 'f'},
         {"B",              no_argument,       0, 'B'},
         {"M",              no_argument,       0, 'M'},
+		{"blob",		   no_argument,       0, 'b'},
         {0, 0, 0, 0}
     };
 	int c;
@@ -47,6 +49,9 @@ int main(int argc, char *argv[])
 				printf("Msgpack encoding\n");
 				enc = strdup("M");
 			break;
+			case 'b':
+				isBlob = 1;
+			break;
 			case '?':
 			/* getopt_long already printed an error message. */
 			break;
@@ -56,8 +61,11 @@ int main(int argc, char *argv[])
 			return -1;
 		}
 	}
-
-	ret = processEncoding(filename, enc);
+	if(isBlob == 1)
+	{
+		printf("Encode blob data\n");
+	}
+	ret = processEncoding(filename, enc, isBlob);
 	if(!ret)
 	{
 		printf("Encoding failed\n");

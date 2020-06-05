@@ -47,7 +47,7 @@ int parseSubDocArgument(char **args, int count, multipart_subdoc_t **docs)
 		(*docs)[j].version = strtok(args[i],",");
 		(*docs)[j].name = strtok(NULL,",");
 		fileName = strtok(NULL,",");
-		if(processEncoding(fileName, "M"))
+		if(processEncoding(fileName, "M", 0))
 		{
 			sprintf(outFile,"%s.bin",strtok(fileName,"."));
 			if(readFromFile(outFile, &fileData, &len))
