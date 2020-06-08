@@ -96,16 +96,26 @@ void generateBoundary(char *s )
     s[len] = 0;
 }
 
-int add_header(char *name, char *value, char *buffer)
+int add_header(char *name, char *value, char *buffer, int flag)
 {
-	int bufLength = strlen(name)+strlen(value)+2;
-	sprintf(buffer, "%s%s\r\n",name,value);
-	return bufLength;
+	int bufLength = 0;
+	if(flag == 0)
+	{
+		bufLength = strlen(name)+strlen(value)+2;
+		sprintf(buffer, "%s%s\r\n",name,value);
+		return bufLength;
+	}
+	else
+	{
+		bufLength = strlen(name)+strlen(value)+4;
+		sprintf(buffer, "%s%s--\r\n",name,value);
+		return bufLength;	
+	}
 }
 
 int getSubDocBuffer(multipart_subdoc_t subdoc, char **buffer)
 {
-	int bufLength = 0, length = 0;
+	int bufLength = 0, length = 0, flag = 0;
 	static char  * hdrbuf = NULL;
 	char  * pHdr = NULL;
 	if (hdrbuf==NULL)
@@ -114,11 +124,11 @@ int getSubDocBuffer(multipart_subdoc_t subdoc, char **buffer)
 	}
 	memset (hdrbuf, 0, sizeof(char)*(MAX_BUFSIZE+subdoc.length));
 	pHdr = hdrbuf;
-	length = add_header("Content-type: ","application/msgpack", pHdr);
+	length = add_header("Content-type: ","application/msgpack", pHdr, flag);
 	pHdr += length;
-	length = add_header("Etag: ",subdoc.version, pHdr);
+	length = add_header("Etag: ",subdoc.version, pHdr, flag);
 	pHdr += length;
-	length = add_header("Namespace: ",subdoc.name, pHdr);
+	length = add_header("Namespace: ",subdoc.name, pHdr, flag);
 	pHdr += length;
 	length = append_str(pHdr, "\n");
 	pHdr += length;
@@ -167,7 +177,7 @@ int generateMultipartBuffer(char *rootVersion, int subDocCount, multipart_subdoc
 {
 	char boundary[50] = {'\0'};
 	char *temp = NULL;
-	int subDocsDataSize = 0, subdocLen = 0, bufLen = 0, len = 0;
+	int subDocsDataSize = 0, subdocLen = 0, bufLen = 0, len = 0, flag = 0;
 	generateBoundary(boundary);
 	printf("boundary: %s\n",boundary);
 	subDocsDataSize = getSubDocsDataSize(subdocs, subDocCount);
@@ -177,15 +187,15 @@ int generateMultipartBuffer(char *rootVersion, int subDocCount, multipart_subdoc
 	temp = *buffer;
 	len = append_str(temp, "HTTP 200 OK\r\n");
 	temp += len;
-	len = add_header("Content-type: multipart/mixed; boundary=",boundary,temp);
+	len = add_header("Content-type: multipart/mixed; boundary=",boundary,temp,flag);
 	temp += len;
-	len = add_header("Etag: ",rootVersion,temp);
+	len = add_header("Etag: ",rootVersion,temp,flag);
 	temp += len;
 	len = append_str(temp, "\n");
 	temp += len;
 	for (int j = 0; j<subDocCount; j++)
 	{
-		len = add_header("--",boundary,temp);
+		len = add_header("--",boundary,temp,flag);
 		temp += len;
 		char *subDocBuffer = NULL;
 		subdocLen = getSubDocBuffer(subdocs[j], &subDocBuffer);
@@ -193,7 +203,8 @@ int generateMultipartBuffer(char *rootVersion, int subDocCount, multipart_subdoc
 		strncpy(temp, subDocBuffer, subdocLen);
 		temp += subdocLen;
 	}
-	len = add_header("--",boundary,temp);
+	flag = 1;
+	len = add_header("--",boundary,temp,flag);
 	temp += len;
 	bufLen = (int)strlen(*buffer);
 	return bufLen;

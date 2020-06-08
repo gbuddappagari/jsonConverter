@@ -157,9 +157,9 @@ static void packJsonArray(cJSON *item, msgpack_packer *pk, int isBlob)
 {
 	int arraySize = cJSON_GetArraySize(item);
 	//printf("%s:%s\n",__FUNCTION__, item->string);
-	if(item->string != NULL && isBlob == 0)
+	if((strncmp(item->string, "parameters",strlen("parameters"))) == 0 || (item->string != NULL && isBlob == 0))
 	{
-		//printf("packing %s\n",item->string);
+		printf("packing %s\n",item->string);
 		__msgpack_pack_string(pk, item->string, strlen(item->string));
 	}
 	msgpack_pack_array( pk, arraySize );
