@@ -59,6 +59,7 @@ int processEncoding(char *filename, char *encoding, int isBlob)
 			FREE(encodedData);
 			FREE(temp);
 		}
+		FREE(fileData);
 	}
 	else
 	{
@@ -157,7 +158,7 @@ static void packJsonArray(cJSON *item, msgpack_packer *pk, int isBlob)
 {
 	int arraySize = cJSON_GetArraySize(item);
 	//printf("%s:%s\n",__FUNCTION__, item->string);
-	if(item->string != NULL && isBlob == 0)
+	if(item->string != NULL && (isBlob == 0 || (strcmp(item->string,"parameters") == 0)))
 	{
 		//printf("packing %s\n",item->string);
 		__msgpack_pack_string(pk, item->string, strlen(item->string));
@@ -235,6 +236,8 @@ static void packBlobData(cJSON *item, msgpack_packer *pk )
 	printf("%s\n",encodedBlob);
 	__msgpack_pack_string(pk, item->string, strlen(item->string));
 	__msgpack_pack_string(pk, encodedBlob, len);
+	FREE(encodedBlob);
+	FREE(blobData);
 	printf("------ %s ------\n",__FUNCTION__);
 }
 

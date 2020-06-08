@@ -37,23 +37,38 @@ int readFromFile(const char *filename, char **data, size_t *len)
 
 int parseSubDocArgument(char **args, int count, multipart_subdoc_t **docs)
 {
-	int i = 0, j = 0;
+	int i = 0, j = 0, isBlob = 0;
 	char *fileName = NULL;
 	char *fileData = NULL;
 	char outFile[128];
     size_t len = 0;
+	char *tempStr= NULL, *docData = NULL, *blobStr = NULL;
 	for (i = 2; i<count; i++)
 	{
-		(*docs)[j].version = strtok(args[i],",");
-		(*docs)[j].name = strtok(NULL,",");
-		fileName = strtok(NULL,",");
-		if(processEncoding(fileName, "M", 0))
+		isBlob = 0;
+		docData = strdup(args[i]);
+		tempStr = docData;
+		(*docs)[j].version = strdup(strsep(&tempStr,","));
+		(*docs)[j].name = strdup(strsep(&tempStr,","));
+		fileName = strdup(strsep(&tempStr,","));
+		if(tempStr != NULL)
+		{
+			blobStr = strsep(&tempStr,",");
+			if(strcmp(blobStr, "blob") == 0)
+			{
+				isBlob = 1;
+			}
+		}
+		FREE(docData);
+		if(processEncoding(fileName, "M", isBlob))
 		{
 			sprintf(outFile,"%s.bin",strtok(fileName,"."));
 			if(readFromFile(outFile, &fileData, &len))
 			{
-				(*docs)[j].data = strdup(fileData);
+				(*docs)[j].data = (char  *)malloc(sizeof(char)*len);
+				memcpy((*docs)[j].data, fileData, len);
 				(*docs)[j].length = len;
+				FREE(fileData);
 			}
 			else
 			{
@@ -66,6 +81,7 @@ int parseSubDocArgument(char **args, int count, multipart_subdoc_t **docs)
 		{
 			return 0;
 		}
+		FREE(fileName);
 		j++;
 	}
 	return 1;
@@ -106,12 +122,9 @@ int add_header(char *name, char *value, char *buffer)
 int getSubDocBuffer(multipart_subdoc_t subdoc, char **buffer)
 {
 	int bufLength = 0, length = 0;
-	static char  * hdrbuf = NULL;
+	char  * hdrbuf = NULL;
 	char  * pHdr = NULL;
-	if (hdrbuf==NULL)
-	{
-		hdrbuf = (char *) malloc (sizeof(char)*(MAX_BUFSIZE+subdoc.length));
-	}
+	hdrbuf = (char *) malloc (sizeof(char)*(MAX_BUFSIZE+subdoc.length));
 	memset (hdrbuf, 0, sizeof(char)*(MAX_BUFSIZE+subdoc.length));
 	pHdr = hdrbuf;
 	length = add_header("Content-type: ","application/msgpack", pHdr);
@@ -127,7 +140,7 @@ int getSubDocBuffer(multipart_subdoc_t subdoc, char **buffer)
 	length = append_str(pHdr, "\r\n\n");
 	pHdr += length;
 	*buffer = hdrbuf;
-	bufLength = strlen(hdrbuf);
+	bufLength = strlen(*buffer);
 	return bufLength;
 }
 int writeToFile(char *file_path, char *data, size_t size)
@@ -167,14 +180,16 @@ int generateMultipartBuffer(char *rootVersion, int subDocCount, multipart_subdoc
 {
 	char boundary[50] = {'\0'};
 	char *temp = NULL;
+	char  * tempBuf = NULL;
 	int subDocsDataSize = 0, subdocLen = 0, bufLen = 0, len = 0;
 	generateBoundary(boundary);
 	printf("boundary: %s\n",boundary);
 	subDocsDataSize = getSubDocsDataSize(subdocs, subDocCount);
 	printf("Subdocs data size: %d\n",subDocsDataSize);
-	*buffer = (char *)malloc(sizeof(char)*(MAX_BUFSIZE+subDocsDataSize));
-	memset(*buffer, 0, sizeof(char)*(MAX_BUFSIZE+subDocsDataSize));
-	temp = *buffer;
+	printf("Allocated memory to buffer is %d\n",MAX_BUFSIZE+subDocsDataSize);
+	tempBuf = (char *)malloc(sizeof(char)*((MAX_BUFSIZE*2)+subDocsDataSize));
+	memset (tempBuf, 0, sizeof(char)*(MAX_BUFSIZE+subDocsDataSize));
+	temp = tempBuf;
 	len = append_str(temp, "HTTP 200 OK\r\n");
 	temp += len;
 	len = add_header("Content-type: multipart/mixed; boundary=",boundary,temp);
@@ -192,10 +207,14 @@ int generateMultipartBuffer(char *rootVersion, int subDocCount, multipart_subdoc
 		printf("subdocLen: %d\n", subdocLen);
 		strncpy(temp, subDocBuffer, subdocLen);
 		temp += subdocLen;
+		FREE(subDocBuffer);
 	}
-	len = add_header("--",boundary,temp);
+	len = append_str(temp, "--");
 	temp += len;
-	bufLen = (int)strlen(*buffer);
+	sprintf(tempBuf,"%s%s--\r\n",tempBuf,boundary);
+	*buffer = tempBuf;
+	bufLen = (int)(strlen(*buffer));
+	printf("bufLen: %d\n",bufLen);
 	return bufLen;
 }
 
@@ -208,7 +227,7 @@ int main(int argc, char *argv[])
 	int bufLen = 0;
 	if(argc < 3)
 	{
-		printf("Usage: ./multipartDoc <root-version> <subDocVersion1,subDocName1,subDocFilePath1> ... <subDocVersionN,subDocNameN,subDocFilePathN>\n");
+		printf("Usage: ./multipartDoc <root-version> <subDocVersion1,subDocName1,subDocFilePath1,blob> ... <subDocVersionN,subDocNameN,subDocFilePathN,blob>\n");
 		exit(1);
 	}
 	rootVersion = strdup(argv[1]);
@@ -216,6 +235,7 @@ int main(int argc, char *argv[])
 	subDocCount = argc - 2;
 	printf("subDocCount: %d\n",subDocCount);
 	subdocs = (multipart_subdoc_t  *)malloc(sizeof(multipart_subdoc_t )*subDocCount);
+	memset(subdocs, 0, sizeof(multipart_subdoc_t )*subDocCount);
 	if(!parseSubDocArgument(argv, argc, &subdocs))
 	{
 		FREE(rootVersion);
@@ -239,6 +259,8 @@ int main(int argc, char *argv[])
 	{
 		for(int i=0; i< subDocCount; i++)
 		{
+			FREE(subdocs[i].name);
+			FREE(subdocs[i].version);
 			FREE(subdocs[i].data);
 		}
 		FREE(subdocs);
