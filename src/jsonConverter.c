@@ -158,7 +158,7 @@ static void packJsonArray(cJSON *item, msgpack_packer *pk, int isBlob)
 {
 	int arraySize = cJSON_GetArraySize(item);
 	//printf("%s:%s\n",__FUNCTION__, item->string);
-	if(item->string != NULL && (isBlob == 0 || (strcmp(item->string,"parameters") == 0)))
+	if(item->string != NULL)
 	{
 		//printf("packing %s\n",item->string);
 		__msgpack_pack_string(pk, item->string, strlen(item->string));
@@ -200,21 +200,21 @@ int getEncodedBlob(char *data, char **encodedData)
 	jsonData=cJSON_Parse(data);
 	if(jsonData != NULL)
 	{
-		msgpack_sbuffer sbuf;
-		msgpack_packer pk;
-		msgpack_sbuffer_init( &sbuf );
-		msgpack_packer_init( &pk, &sbuf, msgpack_sbuffer_write );
-		packJsonArray(jsonData->child, &pk, 1);
-		if( sbuf.data )
+		msgpack_sbuffer sbuf1;
+		msgpack_packer pk1;
+		msgpack_sbuffer_init( &sbuf1 );
+		msgpack_packer_init( &pk1, &sbuf1, msgpack_sbuffer_write );
+		packJsonObject(jsonData, &pk1, 1);
+		if( sbuf1.data )
 		{
-		    *encodedData = ( char * ) malloc( sizeof( char ) * sbuf.size );
+		    *encodedData = ( char * ) malloc( sizeof( char ) * sbuf1.size );
 		    if( NULL != *encodedData )
 			{
-		        memcpy( *encodedData, sbuf.data, sbuf.size );
+		        memcpy( *encodedData, sbuf1.data, sbuf1.size );
 			}
-			encodedDataLen = sbuf.size;
+			encodedDataLen = sbuf1.size;
 		}
-		msgpack_sbuffer_destroy(&sbuf);
+		msgpack_sbuffer_destroy(&sbuf1);
 		cJSON_Delete(jsonData);
 	}
 	else
@@ -229,8 +229,7 @@ static void packBlobData(cJSON *item, msgpack_packer *pk )
 	char *blobData = NULL, *encodedBlob = NULL;
 	int len = 0;
 	printf("------ %s ------\n",__FUNCTION__);
-	blobData = (char *)malloc(sizeof(char) * (strlen(item->valuestring)+(strlen(item->string))+5));
-	sprintf(blobData, "{\"%s\":%s}",item->string,item->valuestring);
+	blobData = strdup(item->valuestring);
 	printf("%s\n",blobData);
 	len = getEncodedBlob(blobData, &encodedBlob);
 	printf("%s\n",encodedBlob);
@@ -261,7 +260,7 @@ static void packJsonObject( cJSON *item, msgpack_packer *pk, int isBlob )
 				packJsonBool(child, pk, false);
 				break;
 			case cJSON_String:
-				if(item->string != NULL && (strcmp(item->string, "value") == 0) && isBlob == 1)
+				if(child->string != NULL && (strcmp(child->string, "value") == 0) && isBlob == 1)
 				{
 					packBlobData(child, pk);
 				}
