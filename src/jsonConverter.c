@@ -22,6 +22,9 @@ static int convertJsonToMsgPack(char *data, char **encodedData, int isBlob);
 static void decodeMsgpackData(char *encodedData, int encodedDataLen);
 static int convertMsgpackToBlob(char *data, int size, char **encodedData);
 static char *decodeBlobData(char *data);
+
+static int count =0;
+static int blob_count = 0;
 /*----------------------------------------------------------------------------*/
 /*                             External Functions                             */
 /*----------------------------------------------------------------------------*/
@@ -161,6 +164,12 @@ static void packJsonArray(cJSON *item, msgpack_packer *pk, int isBlob)
 	if(item->string != NULL && (isBlob == 0 || (strcmp(item->string,"parameters") == 0)))
 	{
 		//printf("packing %s\n",item->string);
+		msgpack_pack_map( pk, 1);
+		__msgpack_pack_string(pk, item->string, strlen(item->string));
+		count++;
+	}
+	else if(count >0)
+	{
 		__msgpack_pack_string(pk, item->string, strlen(item->string));
 	}
 	msgpack_pack_array( pk, arraySize );
@@ -200,21 +209,23 @@ int getEncodedBlob(char *data, char **encodedData)
 	jsonData=cJSON_Parse(data);
 	if(jsonData != NULL)
 	{
-		msgpack_sbuffer sbuf;
-		msgpack_packer pk;
-		msgpack_sbuffer_init( &sbuf );
-		msgpack_packer_init( &pk, &sbuf, msgpack_sbuffer_write );
-		packJsonArray(jsonData->child, &pk, 1);
-		if( sbuf.data )
+		msgpack_sbuffer sbuf1;
+		msgpack_packer pk1;
+		msgpack_sbuffer_init( &sbuf1 );
+		msgpack_packer_init( &pk1, &sbuf1, msgpack_sbuffer_write );
+		msgpack_pack_map( &pk1, getItemsCount(jsonData));
+		blob_count = 1;
+		packJsonArray(jsonData->child, &pk1, 1);
+		if( sbuf1.data )
 		{
-		    *encodedData = ( char * ) malloc( sizeof( char ) * sbuf.size );
+		    *encodedData = ( char * ) malloc( sizeof( char ) * sbuf1.size );
 		    if( NULL != *encodedData )
 			{
-		        memcpy( *encodedData, sbuf.data, sbuf.size );
+		        memcpy( *encodedData, sbuf1.data, sbuf1.size );
 			}
-			encodedDataLen = sbuf.size;
+			encodedDataLen = sbuf1.size;
 		}
-		msgpack_sbuffer_destroy(&sbuf);
+		msgpack_sbuffer_destroy(&sbuf1);
 		cJSON_Delete(jsonData);
 	}
 	else
@@ -234,11 +245,13 @@ static void packBlobData(cJSON *item, msgpack_packer *pk )
 	printf("%s\n",blobData);
 	len = getEncodedBlob(blobData, &encodedBlob);
 	printf("%s\n",encodedBlob);
-	__msgpack_pack_string(pk, item->string, strlen(item->string));
+	//__msgpack_pack_string(pk, item->string, strlen(item->string));
 	__msgpack_pack_string(pk, encodedBlob, len);
 	FREE(encodedBlob);
 	FREE(blobData);
 	printf("------ %s ------\n",__FUNCTION__);
+	blob_count = 0;
+
 }
 
 static void packJsonObject( cJSON *item, msgpack_packer *pk, int isBlob )
@@ -249,7 +262,10 @@ static void packJsonObject( cJSON *item, msgpack_packer *pk, int isBlob )
 		__msgpack_pack_string(pk, item->string, strlen(item->string));
 	}
 	cJSON *child = item->child;
-	msgpack_pack_map( pk, getItemsCount(child));
+	if((blob_count == 1)||(item->child->string != NULL && (strcmp(item->child->string, "name") == 0)))
+	{
+		msgpack_pack_map( pk, getItemsCount(child));
+	}
 	while(child != NULL)
 	{
 		switch((child->type) & 0XFF)
